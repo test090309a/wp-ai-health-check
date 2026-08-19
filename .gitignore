@@ -1,0 +1,19 @@
+# Betriebssystem-Dateien
+.DS_Store
+Thumbs.db
+
+# IDE- und Editor-Dateien
+.idea/
+.vscode/
+*.sublime-*
+
+# WordPress-spezifisch
+*.log
+/wp-content/
+/vendor/
+.env
+
+# Plugin-spezifische temporäre Dateien
+/tmp/
+/build/
+*.zip
