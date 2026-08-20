@@ -50,119 +50,113 @@ class DashboardWidget {
     }
 
     public function render_widget(): void {
-        $last_raw = get_transient('wpaic_last_result');
-        $last_run = get_option('wpaic_last_run');
-        $model = get_option('wpaic_ollama_model', 'llama3.2');
+        $last_run = get_option( 'wpaic_last_run' );
+        $model = get_option( 'wpaic_ollama_model', 'llama3.2' );
         
-        // 💡 JSON aus Markdown extrahieren
+        // 🔥 FIX: result_json ist bereits ein Array!
+        $last_db = AnalysisStore::latest();
         $last = null;
-        if (!empty($last_raw)) {
-            if (is_string($last_raw)) {
-                // Entferne Markdown-Code-Blöcke
-                $clean = preg_replace('/^```json\s*/', '', $last_raw);
-                $clean = preg_replace('/\s*```$/', '', $clean);
-                $clean = trim($clean);
-                
-                // Versuche JSON zu parsen
-                $decoded = json_decode($clean, true);
-                if (is_array($decoded)) {
-                    $last = $decoded;
-                } else {
-                    // Fallback: Versuche den String direkt zu parsen
-                    $decoded = json_decode($last_raw, true);
-                    if (is_array($decoded)) {
-                        $last = $decoded;
-                    }
-                }
-            } elseif (is_array($last_raw)) {
-                $last = $last_raw;
+        if ( $last_db && ! empty( $last_db['result_json'] ) ) {
+            $last = $last_db['result_json'];
+        } elseif ( $last_db && is_string( $last_db['result_json'] ) ) {
+            $last = json_decode( $last_db['result_json'], true );
+        }
+        
+        // Transient als Fallback (wenn DB leer)
+        if ( empty( $last ) ) {
+            $last_raw = get_transient( 'wpaic_last_result' );
+            if ( ! empty( $last_raw ) ) {
+                $last = $this->parse_result( $last_raw );
             }
         }
+
+        // 🔥 REST-URL und Nonce für JavaScript bereitstellen
+        $rest_url = esc_url_raw( rest_url( 'wpaic/v1' ) );
+        $nonce = wp_create_nonce( 'wp_rest' );
         ?>
         <div class="wpaic-dashboard-widget">
 
-            <?php if ($last_run) : ?>
+            <?php if ( $last_run ) : ?>
                 <div class="wpaic-timestamp">
-                    <?php echo esc_html__('Letzte Analyse:', 'wp-ai-health-check'); ?>
-                    <strong><?php echo esc_html($last_run); ?></strong>
-                    <?php echo esc_html__('mit', 'wp-ai-health-check'); ?>
-                    <strong><?php echo esc_html($model); ?></strong>
+                    <?php echo esc_html__( 'Letzte Analyse:', 'wp-ai-health-check' ); ?>
+                    <strong><?php echo esc_html( $last_run ); ?></strong>
+                    <?php echo esc_html__( 'mit', 'wp-ai-health-check' ); ?>
+                    <strong><?php echo esc_html( $model ); ?></strong>
                 </div>
             <?php endif; ?>
 
-            <?php if (!empty($last) && is_array($last) && isset($last['summary'])) : ?>
+            <?php if ( ! empty( $last ) && is_array( $last ) && isset( $last['summary'] ) ) : ?>
 
-                <?php if (isset($last['summary'])) : ?>
+                <?php if ( isset( $last['summary'] ) ) : ?>
                     <div class="wpaic-summary">
-                        <p><?php echo wp_kses_post($last['summary']); ?></p>
+                        <p><?php echo wp_kses_post( $last['summary'] ); ?></p>
                     </div>
                 <?php endif; ?>
 
                 <?php
-                // Risiken nach Level gruppieren
                 $risks = $last['risks'] ?? array();
-                $high = array_filter($risks, function($r) { 
-                    $level = strtolower($r['level'] ?? '');
+                $high = array_filter( $risks, function( $r ) { 
+                    $level = strtolower( $r['level'] ?? '' );
                     return $level === 'high' || $level === 'critical'; 
-                });
-                $medium = array_filter($risks, function($r) { 
-                    $level = strtolower($r['level'] ?? '');
+                } );
+                $medium = array_filter( $risks, function( $r ) { 
+                    $level = strtolower( $r['level'] ?? '' );
                     return $level === 'medium'; 
-                });
-                $low = array_filter($risks, function($r) { 
-                    $level = strtolower($r['level'] ?? '');
+                } );
+                $low = array_filter( $risks, function( $r ) { 
+                    $level = strtolower( $r['level'] ?? '' );
                     return $level === 'low'; 
-                });
+                } );
                 ?>
 
-                <?php if (!empty($high)) : ?>
+                <?php if ( ! empty( $high ) ) : ?>
                     <div style="margin: 10px 0 0 0; padding: 8px 12px; background: #fcf0f0; border-radius: 4px; border-left: 4px solid #d63638;">
-                        <strong style="color: #d63638;">🔴 <?php echo count($high); ?> kritische Risiken</strong>
+                        <strong style="color: #d63638;">🔴 <?php echo count( $high ); ?> kritische Risiken</strong>
                         <ul class="wpaic-risks-list">
-                            <?php foreach (array_slice($high, 0, 3) as $risk) : ?>
-                                <li><span class="wpaic-risk-high">●</span> <?php echo esc_html($risk['title'] ?? ''); ?></li>
+                            <?php foreach ( array_slice( $high, 0, 3 ) as $risk ) : ?>
+                                <li><span class="wpaic-risk-high">●</span> <?php echo esc_html( $risk['title'] ?? '' ); ?></li>
                             <?php endforeach; ?>
-                            <?php if (count($high) > 3) : ?>
-                                <li><em><?php echo sprintf(esc_html__('… und %d weitere', 'wp-ai-health-check'), count($high) - 3); ?></em></li>
+                            <?php if ( count( $high ) > 3 ) : ?>
+                                <li><em><?php echo sprintf( esc_html__( '… und %d weitere', 'wp-ai-health-check' ), count( $high ) - 3 ); ?></em></li>
                             <?php endif; ?>
                         </ul>
                     </div>
                 <?php endif; ?>
 
-                <?php if (!empty($medium) && empty($high)) : ?>
+                <?php if ( ! empty( $medium ) && empty( $high ) ) : ?>
                     <div style="margin: 10px 0 0 0; padding: 8px 12px; background: #fcf9f0; border-radius: 4px; border-left: 4px solid #dba617;">
-                        <strong style="color: #dba617;">🟡 <?php echo count($medium); ?> mittlere Risiken</strong>
+                        <strong style="color: #dba617;">🟡 <?php echo count( $medium ); ?> mittlere Risiken</strong>
                         <ul class="wpaic-risks-list">
-                            <?php foreach (array_slice($medium, 0, 3) as $risk) : ?>
-                                <li><span class="wpaic-risk-medium">●</span> <?php echo esc_html($risk['title'] ?? ''); ?></li>
+                            <?php foreach ( array_slice( $medium, 0, 3 ) as $risk ) : ?>
+                                <li><span class="wpaic-risk-medium">●</span> <?php echo esc_html( $risk['title'] ?? '' ); ?></li>
                             <?php endforeach; ?>
-                            <?php if (count($medium) > 3) : ?>
-                                <li><em><?php echo sprintf(esc_html__('… und %d weitere', 'wp-ai-health-check'), count($medium) - 3); ?></em></li>
+                            <?php if ( count( $medium ) > 3 ) : ?>
+                                <li><em><?php echo sprintf( esc_html__( '… und %d weitere', 'wp-ai-health-check' ), count( $medium ) - 3 ); ?></em></li>
                             <?php endif; ?>
                         </ul>
                     </div>
                 <?php endif; ?>
 
-                <?php if (empty($high) && empty($medium) && !empty($low)) : ?>
+                <?php if ( empty( $high ) && empty( $medium ) && ! empty( $low ) ) : ?>
                     <div style="margin: 10px 0 0 0; padding: 8px 12px; background: #f0f6fc; border-radius: 4px; border-left: 4px solid #007cba;">
-                        <strong style="color: #007cba;">🟢 <?php echo count($low); ?> kleine Optimierungshinweise</strong>
+                        <strong style="color: #007cba;">🟢 <?php echo count( $low ); ?> kleine Optimierungshinweise</strong>
                         <ul class="wpaic-risks-list">
-                            <?php foreach (array_slice($low, 0, 3) as $risk) : ?>
-                                <li><span class="wpaic-risk-low">●</span> <?php echo esc_html($risk['title'] ?? ''); ?></li>
+                            <?php foreach ( array_slice( $low, 0, 3 ) as $risk ) : ?>
+                                <li><span class="wpaic-risk-low">●</span> <?php echo esc_html( $risk['title'] ?? '' ); ?></li>
                             <?php endforeach; ?>
-                            <?php if (count($low) > 3) : ?>
-                                <li><em><?php echo sprintf(esc_html__('… und %d weitere', 'wp-ai-health-check'), count($low) - 3); ?></em></li>
+                            <?php if ( count( $low ) > 3 ) : ?>
+                                <li><em><?php echo sprintf( esc_html__( '… und %d weitere', 'wp-ai-health-check' ), count( $low ) - 3 ); ?></em></li>
                             <?php endif; ?>
                         </ul>
                     </div>
                 <?php endif; ?>
 
                 <div class="wpaic-actions">
-                    <a href="<?php echo esc_url(admin_url('tools.php?page=wp-ai-health-check')); ?>" class="button button-primary">
-                        <?php esc_html_e('Vollständige Analyse', 'wp-ai-health-check'); ?>
+                    <a href="<?php echo esc_url( admin_url( 'tools.php?page=wp-ai-health-check' ) ); ?>" class="button button-primary">
+                        <?php esc_html_e( 'Vollständige Analyse', 'wp-ai-health-check' ); ?>
                     </a>
                     <button type="button" class="button" id="wpaic-dashboard-run">
-                        <?php esc_html_e('Neu analysieren', 'wp-ai-health-check'); ?>
+                        <?php esc_html_e( 'Neu analysieren', 'wp-ai-health-check' ); ?>
                     </button>
                     <span class="spinner wpaic-spinner" id="wpaic-dashboard-spinner"></span>
                 </div>
@@ -177,15 +171,27 @@ class DashboardWidget {
                     const spinner = document.getElementById('wpaic-dashboard-spinner');
                     const result = document.getElementById('wpaic-dashboard-result');
 
+                    // 🔥 FIX: cfg aus window.WPAIC_CFG mit Fallback
+                    const cfg = window.WPAIC_CFG || {};
+                    
+                    // 🔥 Hardcoded Fallback für REST-URL und Nonce (falls cfg undefined)
+                    const restUrl = cfg.restUrl || '<?php echo $rest_url; ?>';
+                    const nonce = cfg.nonce || '<?php echo $nonce; ?>';
+
+                    console.log('🔍 Dashboard Widget Config:', {
+                        restUrl: restUrl,
+                        nonce: nonce ? nonce.substring(0, 10) + '...' : '❌ MISSING'
+                    });
+
                     btn.addEventListener('click', function() {
                         btn.disabled = true;
                         spinner.classList.add('is-active');
                         result.innerHTML = '<p style="color:#666;"><?php esc_html_e('Analyse läuft…', 'wp-ai-health-check'); ?></p>';
 
-                        const nonce = '<?php echo wp_create_nonce("wp_rest"); ?>';
-                        const restUrl = '<?php echo esc_url_raw(rest_url("wpaic/v1/analyze")); ?>';
+                        const url = restUrl + '/analyze';
+                        console.log('🚀 Dashboard: Starting analysis at:', url);
 
-                        fetch(restUrl, {
+                        fetch(url, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -193,19 +199,37 @@ class DashboardWidget {
                             },
                             body: JSON.stringify({force: true})
                         })
-                        .then(res => res.json())
+                        .then(async res => {
+                            console.log('📡 Dashboard Response Status:', res.status);
+                            
+                            // 🔥 Prüfe Content-Type
+                            const contentType = res.headers.get('content-type');
+                            if (!contentType || !contentType.includes('application/json')) {
+                                const text = await res.text();
+                                console.error('❌ Dashboard: Kein JSON erhalten:', text.substring(0, 200));
+                                throw new Error('Server antwortete mit HTML (Status: ' + res.status + '). Bitte Permalinks speichern.');
+                            }
+                            
+                            if (!res.ok) {
+                                throw new Error('HTTP ' + res.status + ': ' + res.statusText);
+                            }
+                            
+                            return res.json();
+                        })
                         .then(data => {
+                            console.log('📊 Dashboard Response:', data);
                             if (data.success) {
                                 result.innerHTML = '<div class="notice notice-success" style="margin:0;"><p><?php esc_html_e('✅ Analyse abgeschlossen! Seite wird neu geladen…', 'wp-ai-health-check'); ?></p></div>';
-                                setTimeout(() => location.reload(), 1500);
+                                setTimeout(function() { location.reload(); }, 1500);
                             } else {
                                 result.innerHTML = '<div class="notice notice-error" style="margin:0;"><p><?php esc_html_e("Fehler:", "wp-ai-health-check"); ?> ' + (data.error || '<?php esc_html_e("Unbekannt", "wp-ai-health-check"); ?>') + '</p></div>';
                             }
                         })
-                        .catch(err => {
-                            result.innerHTML = '<div class="notice notice-error" style="margin:0;"><p><?php esc_html_e("Fehler:", "wp-ai-health-check"); ?> ' + err.message + '</p></div>';
+                        .catch(function(err) {
+                            console.error('❌ Dashboard Error:', err);
+                            result.innerHTML = '<div class="notice notice-error" style="margin:0;"><p><?php esc_html_e("Fehler:", "wp-ai-health-check"); ?> ' + err.message + '<br><small>Siehe Browser-Konsole (F12) für Details.</small></p></div>';
                         })
-                        .finally(() => {
+                        .finally(function() {
                             btn.disabled = false;
                             spinner.classList.remove('is-active');
                         });
@@ -217,17 +241,11 @@ class DashboardWidget {
 
                 <div style="padding: 20px 0; text-align: center; color: #666;">
                     <p style="font-size: 24px; margin: 0;">📊</p>
-                    <p><?php esc_html_e('Noch keine Analyse durchgeführt.', 'wp-ai-health-check'); ?></p>
-                    <?php if (!empty($last_raw)) : ?>
-                        <p style="font-size: 11px; color: #999; word-break: break-all;">
-                            <?php esc_html_e('(Debug: Rohdaten:', 'wp-ai-health-check'); ?> 
-                            <?php echo esc_html(substr($last_raw, 0, 100)) . '...'; ?>
-                        </p>
-                    <?php endif; ?>
+                    <p><?php esc_html_e( 'Noch keine Analyse durchgeführt.', 'wp-ai-health-check' ); ?></p>
                 </div>
                 <div class="wpaic-actions">
-                    <a href="<?php echo esc_url(admin_url('tools.php?page=wp-ai-health-check')); ?>" class="button button-primary">
-                        <?php esc_html_e('Erste Analyse starten', 'wp-ai-health-check'); ?>
+                    <a href="<?php echo esc_url( admin_url( 'tools.php?page=wp-ai-health-check' ) ); ?>" class="button button-primary">
+                        <?php esc_html_e( 'Erste Analyse starten', 'wp-ai-health-check' ); ?>
                     </a>
                 </div>
 
@@ -237,20 +255,30 @@ class DashboardWidget {
     }
 
     /**
-     * Holt das letzte Ergebnis über die REST-API
+     * Hilfstfunktion: Versucht, das letzte Ergebnis zu parsen.
      */
-    private function fetch_latest_result(): ?array {
-        $last_run = get_option('wpaic_last_run');
-        if (!$last_run) {
+    private function parse_result( mixed $raw ): ?array {
+        if ( is_array( $raw ) ) {
+            return $raw;
+        }
+        if ( ! is_string( $raw ) ) {
             return null;
         }
-        
-        // Versuche den Transient zu lesen (nochmal)
-        $data = get_transient('wpaic_last_result');
-        if (!empty($data) && is_array($data)) {
-            return $data;
+
+        $clean = preg_replace( '/^```json\s*/', '', $raw );
+        $clean = preg_replace( '/\s*```$/', '', $clean );
+        $clean = trim( $clean );
+
+        $decoded = json_decode( $clean, true );
+        if ( is_array( $decoded ) ) {
+            return $decoded;
         }
-        
+
+        $decoded = json_decode( $raw, true );
+        if ( is_array( $decoded ) ) {
+            return $decoded;
+        }
+
         return null;
     }
 }

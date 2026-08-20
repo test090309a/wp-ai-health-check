@@ -18,3 +18,8 @@ if ( $timestamp ) {
 
 // Falls noch andere Cron-Events existieren
 wp_clear_scheduled_hook( 'wpaic_daily_check' );
+
+// Datenbanktabelle löschen
+global $wpdb;
+$table = $wpdb->prefix . 'wpaic_analyses';
+$wpdb->query( "DROP TABLE IF EXISTS {$table}" );

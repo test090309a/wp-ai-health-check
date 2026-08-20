@@ -8,6 +8,9 @@
 *   📊 Übersichtliche Darstellung von Risiken und Empfehlungen im Admin-Bereich.
 *   🏠 Dashboard-Widget für schnellen Überblick.
 *   ⚙️ Konfigurierbare Modelle und automatische tägliche Analysen (Cron).
+*   💾 Persistente Speicherung aller Analysen in einer WordPress-Datenbanktabelle.
+*   📜 Analyse-Historie mit Ansicht und Löschung einzelner Einträge.
+*   🚫 Anti-Halluzinations-Prompts: Keine erfundenen Risiken oder falschen Upgrade-Aufforderungen.
 
 ## Voraussetzungen
 *   WordPress 6.4 oder höher
@@ -23,6 +26,9 @@
 *   **Ollama HTTP-URL**: Die Adresse deiner Ollama-Instanz (z.B. `http://192.168.0.194:11434`).
 *   **Modell**: Wähle ein installiertes Modell aus dem Dropdown-Menü.
 *   **Automatische Analyse**: Aktiviere den Cron-Job für tägliche, automatische Checks.
+
+## Architektur
+Die detaillierte Architektur mit Mermaid-Diagrammen findest du in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Mitwirken
 Beiträge sind willkommen! Bitte erstelle einen Issue oder Pull Request.
