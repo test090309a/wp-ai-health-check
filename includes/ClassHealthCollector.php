@@ -9,8 +9,15 @@ class HealthCollector {
 
     /** Sensible Schlüssel, die gefiltert werden */
     private static array $sensitive_keys = array(
-        'password', 'passwd', 'secret', 'key', 'token',
-        'auth', 'credential', 'private', 'api_key', 'apikey'
+        'password', 'passwd', 'secret', 'api_key', 'apikey',
+        'token', 'credential', 'private_key', 'auth_token',
+    );
+
+    // 🔥 WHITELIST: Keys die "auth"/"key" enthalten aber NICHT sensibel sind
+    private static array $safe_keys = array(
+        'authorization_header', 'https_status', 'background_updates',
+        'loopback_requests', 'page_cache', 'dotorg_communication',
+        'wordpress-version', 'object_cache', 'max_execution_time',
     );
 
     /**
@@ -21,13 +28,14 @@ class HealthCollector {
 
         $data = array(
             'site' => array(
-                'wp_version'    => get_bloginfo( 'version' ),
-                'php_version'   => PHP_VERSION,
-                'mysql_version' => $wpdb->db_version(),
-                'language'      => get_locale(),
-                'is_multisite'  => is_multisite(),
-                'https'         => is_ssl(),
-                'debug_mode'    => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
+                'wp_version'         => get_bloginfo( 'version' ),
+                'wp_version_status'  => self::get_wp_version_status(),
+                'php_version'        => PHP_VERSION,
+                'mysql_version'      => $wpdb->db_version(),
+                'language'           => get_locale(),
+                'is_multisite'       => is_multisite(),
+                'https'              => is_ssl(),
+                'debug_mode'         => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
             ),
             'active_plugins' => self::active_plugins(),
             'active_theme'   => self::active_theme(),
@@ -49,6 +57,52 @@ class HealthCollector {
     }
 
     /**
+     * Ermittelt den expliziten Sicherheitsstatus der WordPress-Version.
+     */
+    private static function get_wp_version_status(): array {
+        $current_version = get_bloginfo( 'version' );
+        
+        if ( ! function_exists( 'get_core_updates' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/update.php';
+        }
+        
+        $updates = get_core_updates();
+        
+        if ( empty( $updates ) || ! is_array( $updates ) ) {
+            return array(
+                'status'          => 'current',
+                'message'         => null,
+                'security_critical' => false,
+            );
+        }
+        
+        foreach ( $updates as $update ) {
+            if ( isset( $update->response ) && $update->response === 'upgrade' ) {
+                $version_check = self::quick_test( 'wordpress-version' );
+                
+                $is_security = in_array( $version_check, array( 'critical', 'recommended' ), true );
+                
+                return array(
+                    'status'          => 'outdated',
+                    'message'         => sprintf(
+                        'WordPress %s ist verfügbar (aktuell installiert: %s). Site Health Status: %s',
+                        $update->current ?? 'unbekannt',
+                        $current_version,
+                        $version_check
+                    ),
+                    'security_critical' => $version_check === 'critical',
+                );
+            }
+        }
+        
+        return array(
+            'status'          => 'current',
+            'message'         => null,
+            'security_critical' => false,
+        );
+    }
+
+    /**
      * Filtert sensible Daten aus dem Array
      */
     private static function filter_sensitive_data( array $data ): array {
@@ -61,10 +115,17 @@ class HealthCollector {
     }
 
     /**
-     * Prüft ob ein Schlüssel sensibel ist
+     * 🔥 FIX: Prüft ob ein Schlüssel sensibel ist (ONCE!)
+     * Mit Whitelist für bekannte Safe-Keys
      */
     private static function is_sensitive_key( string $key ): bool {
         $key_lower = strtolower( $key );
+        
+        // 🔥 Whitelist: Schlüssel die NICHT sensibel sind
+        if ( in_array( $key_lower, self::$safe_keys, true ) ) {
+            return false;
+        }
+        
         foreach ( self::$sensitive_keys as $sensitive ) {
             if ( strpos( $key_lower, $sensitive ) !== false ) {
                 return true;
@@ -106,12 +167,13 @@ class HealthCollector {
      */
     private static function get_site_health_summary(): array {
         return array(
-            'loopback_requests' => self::quick_test( 'loopback-requests' ),
-            'background_updates' => self::quick_test( 'background-updates' ),
-            'https_status'       => self::quick_test( 'https-status' ),
-            'page_cache'         => self::quick_test( 'page-cache' ),
+            'loopback_requests'    => self::quick_test( 'loopback-requests' ),
+            'background_updates'   => self::quick_test( 'background-updates' ),
+            'https_status'         => self::quick_test( 'https-status' ),
+            'page_cache'           => self::quick_test( 'page-cache' ),
             'authorization_header' => self::quick_test( 'authorization-header' ),
             'dotorg_communication' => self::quick_test( 'dotorg-communication' ),
+            'wordpress-version'    => self::quick_test( 'wordpress-version' ),
         );
     }
 

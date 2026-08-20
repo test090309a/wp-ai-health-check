@@ -8,9 +8,19 @@ defined( 'ABSPATH' ) || exit;
 class OllamaClient {
 
     /**
-     * 🆕 Standard-Host-Konstante für einfache Wartung
+     * Cache für Verfügbarkeits-Prüfung (pro Request)
      */
-    private const DEFAULT_HOST = 'http://192.168.0.194:11434';
+    private static ?bool $availability_cache = null;
+
+    /**
+     * Cache für Modell-Liste (pro Request)
+     */
+    private static ?array $models_cache = null;
+
+    /**
+     * Standard-Host (zentral definiert in wp-ai-health-check.php)
+     */
+    private const DEFAULT_HOST = WPAIC_DEFAULT_OLLAMA_HOST;
 
     /**
      * 🆕 Holt den konfigurierten Host mit Fallback
@@ -33,9 +43,14 @@ class OllamaClient {
 
     /**
      * Prüft ob Ollama erreichbar ist
-     * 🆕 Verbesserte Fehlerbehandlung mit Details
+     * 🆕 Verbesserte Fehlerbehandlung mit Details + Cache
      */
     public static function is_available(): bool {
+        // Cache pro Request
+        if ( self::$availability_cache !== null ) {
+            return self::$availability_cache;
+        }
+        
         $host = self::get_host();
         $url  = $host . 'api/tags';
         
@@ -52,7 +67,7 @@ class OllamaClient {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 error_log( '[WPAIC] Ollama availability check failed: ' . $response->get_error_message() );
             }
-            return false;
+            return self::$availability_cache = false;
         }
         
         $code = wp_remote_retrieve_response_code( $response );
@@ -62,14 +77,19 @@ class OllamaClient {
             error_log( '[WPAIC] Ollama availability: ' . ( $available ? '✅ OK' : '❌ FAILED (HTTP ' . $code . ')' ) );
         }
         
-        return $available;
+        return self::$availability_cache = $available;
     }
 
     /**
      * Ruft alle verfügbaren Modelle von Ollama ab
-     * 🆕 Verbesserte Fehlerbehandlung
+     * 🆕 Verbesserte Fehlerbehandlung + Cache
      */
     public static function get_models(): array {
+        // Cache pro Request
+        if ( self::$models_cache !== null ) {
+            return self::$models_cache;
+        }
+        
         $host = self::get_host();
         $url  = $host . 'api/tags';
         
@@ -86,7 +106,7 @@ class OllamaClient {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 error_log( '[WPAIC] Failed to fetch models: ' . $response->get_error_message() );
             }
-            return array();
+            return self::$models_cache = array();
         }
         
         $code = wp_remote_retrieve_response_code( $response );
@@ -94,7 +114,7 @@ class OllamaClient {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 error_log( '[WPAIC] Failed to fetch models: HTTP ' . $code );
             }
-            return array();
+            return self::$models_cache = array();
         }
         
         $body = wp_remote_retrieve_body( $response );
@@ -104,7 +124,7 @@ class OllamaClient {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 error_log( '[WPAIC] No models found in response' );
             }
-            return array();
+            return self::$models_cache = array();
         }
         
         $models = array();
@@ -118,11 +138,11 @@ class OllamaClient {
             error_log( '[WPAIC] Found ' . count( $models ) . ' models: ' . implode( ', ', $models ) );
         }
         
-        return $models;
+        return self::$models_cache = $models;
     }
 
     /**
-     * 🆕 Prüft ob ein Modell existiert
+     * 🆕 Prüft ob ein Modell existiert (mit Cache)
      */
     public static function model_exists( string $model_name ): bool {
         $models = self::get_models();
@@ -134,6 +154,14 @@ class OllamaClient {
      */
     public static function get_current_url(): string {
         return self::get_host();
+    }
+
+    /**
+     * 🆕 Resetet den Cache (z.B. nach Konfigurationsänderungen)
+     */
+    public static function reset_cache(): void {
+        self::$availability_cache = null;
+        self::$models_cache = null;
     }
 
     /**
